@@ -3,19 +3,39 @@
 #include <cv_bridge/cv_bridge.h>
 
 #include <exception>
-#include <cinttypes>
-#include <cstdio>
+#include <unordered_map>
+#include <algorithm>
 
 namespace vision_detector {
 
+static std::unordered_map<std::string, Precision> inference_precision_map = {
+    {"INT8", INT8}, {"INT", INT8}, {"HALF", FP16}, {"FP16", FP16}, {"FLOAT", FP32}, {"FP32", FP32},
+};
+
+static std::unordered_map<std::string, ModelType> net_type_map = {
+    {"YOLOV3", YOLOV3}, {"V3", YOLOV3}, {"YOLOV4", YOLOV4}, {"V4", YOLOV4}, {"YOLOV5", YOLOV5}, {"V5", YOLOV5},
+};
+
 Yolov5VisionDetector::Yolov5VisionDetector(const rclcpp::NodeOptions& options)
     : rclcpp::Node("yolov5_vision_detector", options), m_detector(std::make_unique<Detector>()) {
+    // Converts a param to uppercase and finds it's entry in the passed map
+    auto to_enum = [&](const std::string& name, const std::string& def,
+                       std::unordered_map<std::string, auto> map) -> auto {
+        std::string str = this->declare_parameter<std::string>(name, def);
+        std::transform(str.begin(), str.end(), str.begin(), ::toupper);
+        if (not map.contains(str)) {
+            RCLCPP_WARN(this->get_logger(), "%s is set to %s, which is not recognized. Setting to %s.", name, str, def);
+            return def;
+        }
+        return map[str];
+    };
+
     m_config.file_model_cfg = this->declare_parameter<std::string>("file_model_cfg", "");
     m_config.file_model_weights = this->declare_parameter<std::string>("file_model_weights", "");
     m_config.detect_thresh = this->declare_parameter<float>("detect_thresh", 0.5);
-    m_config.net_type = YOLOV5;
-    m_config.inference_precison = static_cast<Precision>(this->declare_parameter<int>("precision", 2));
+    m_config.inference_precision = to_enum("precision", "FLOAT", inference_precision_map);
     m_config.gpu_id = 0;
+    m_config.net_type = to_enum("network", "V5", net_type_map);
     m_config.calibration_image_list_file_txt =
         this->declare_parameter<std::string>("calibration_image_list_file_txt", "");
 
