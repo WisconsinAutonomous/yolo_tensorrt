@@ -1,4 +1,4 @@
-#include "yolov5_tensorrt_vision_detector/yolov5_tensorrt_vision_detector.hpp"
+#include "yolo_tensorrt/yolo_tensorrt.hpp"
 
 #include <memory>
 #include <rclcpp/rclcpp.hpp>
