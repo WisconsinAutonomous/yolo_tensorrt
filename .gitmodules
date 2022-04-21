@@ -1,0 +1,3 @@
+[submodule "thirdparty/yolo-tensorrt"]
+	path = thirdparty/yolo-tensorrt
+	url = git@github.com:WisconsinAutonomous/yolo-tensorrt.git
