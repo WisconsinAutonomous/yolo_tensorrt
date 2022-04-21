@@ -23,9 +23,9 @@ Yolov5VisionDetector::Yolov5VisionDetector(const rclcpp::NodeOptions& options)
                        std::unordered_map<std::string, auto> map) -> auto {
         std::string str = this->declare_parameter<std::string>(name, def);
         std::transform(str.begin(), str.end(), str.begin(), ::toupper);
-        if (not map.contains(str)) {
-            RCLCPP_WARN(this->get_logger(), "%s is set to %s, which is not recognized. Setting to %s.", name, str, def);
-            return def;
+        if (map.count(str) == 0) {
+            RCLCPP_WARN(this->get_logger(), "%s is set to %s, which is not recognized. Setting to %s.", name.c_str(), str.c_str(), def.c_str());
+            return map[def];
         }
         return map[str];
     };
