@@ -21,7 +21,7 @@ set(DEPENDENCIES
   OpenCV
   cv_bridge
   sensor_msgs
-  wauto_perception_msgs
+  art_perception_msgs
   rclcpp_components
   image_transport
 )

@@ -3,7 +3,7 @@
 // ROS includes
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
-#include "wauto_perception_msgs/msg/roi_array.hpp"
+#include "art_perception_msgs/msg/roi_array.hpp"
 
 // STL includes
 #include <memory>
@@ -34,7 +34,7 @@ class Yolov5VisionDetector : public rclcpp::Node {
 
     image_transport::Subscriber m_img_subscriber;
 
-    rclcpp::Publisher<wauto_perception_msgs::msg::RoiArray>::SharedPtr m_rois_publisher;
+    rclcpp::Publisher<art_perception_msgs::msg::RoiArray>::SharedPtr m_rois_publisher;
     image_transport::Publisher m_debug_bb_publisher;
 };
 

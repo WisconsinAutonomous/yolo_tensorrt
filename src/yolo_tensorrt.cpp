@@ -48,7 +48,7 @@ Yolov5VisionDetector::Yolov5VisionDetector(const rclcpp::NodeOptions& options)
                                                             std::bind(&Yolov5VisionDetector::imageCallback, this, _1),
                                                             "raw", rmw_qos_profile_sensor_data);
 
-    m_rois_publisher = this->create_publisher<wauto_perception_msgs::msg::RoiArray>("~/output/rois", 1);
+    m_rois_publisher = this->create_publisher<art_perception_msgs::msg::RoiArray>("~/output/rois", 1);
     m_debug_bb_publisher = image_transport::create_publisher(this, "~/output/debug/bb");
 }
 
@@ -111,12 +111,12 @@ BatchResult Yolov5VisionDetector::detect(const cv::Mat& img) {
 }
 
 void Yolov5VisionDetector::publish(const BatchResult& batch_result, const std_msgs::msg::Header& header) {
-    auto roi_array = std::make_unique<wauto_perception_msgs::msg::RoiArray>();
+    auto roi_array = std::make_unique<art_perception_msgs::msg::RoiArray>();
     roi_array->header = header;
 
     roi_array->rois.reserve(batch_result.size());
     for (auto& result : batch_result) {
-        wauto_perception_msgs::msg::Roi roi;
+        art_perception_msgs::msg::Roi roi;
 
         geometry_msgs::msg::Point bl;
         bl.x = result.rect.tl().x;
@@ -128,7 +128,7 @@ void Yolov5VisionDetector::publish(const BatchResult& batch_result, const std_ms
         bl.x = result.rect.br().x;
         roi.top_right = tr;
 
-        wauto_perception_msgs::msg::ObjectClassification classification;
+        art_perception_msgs::msg::ObjectClassification classification;
         classification.confidence = result.prob;
         classification.classification = result.id;
         roi.classification = classification;
