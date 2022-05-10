@@ -35,7 +35,6 @@ class Yolov5VisionDetector : public rclcpp::Node {
     image_transport::Subscriber m_img_subscriber;
 
     rclcpp::Publisher<wauto_perception_msgs::msg::RoiArray>::SharedPtr m_rois_publisher;
-    image_transport::Publisher m_debug_bb_publisher;
 };
 
 }  // namespace vision_detector

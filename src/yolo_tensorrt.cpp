@@ -2,6 +2,8 @@
 
 #include <cv_bridge/cv_bridge.h>
 
+#include "wauto_perception_msgs/msg/object_classification.hpp"
+
 #include <exception>
 #include <unordered_map>
 #include <algorithm>
@@ -14,6 +16,13 @@ static std::unordered_map<std::string, Precision> inference_precision_map = {
 
 static std::unordered_map<std::string, ModelType> net_type_map = {
     {"YOLOV3", YOLOV3}, {"V3", YOLOV3}, {"YOLOV4", YOLOV4}, {"V4", YOLOV4}, {"YOLOV5", YOLOV5}, {"V5", YOLOV5},
+};
+
+static std::unordered_map<uint8_t, uint8_t> class_id_map = {
+    {0, wauto_perception_msgs::msg::ObjectClassification::WA_OBJECT_CLASSIFICATION_PEDESTRIAN},
+    {1, wauto_perception_msgs::msg::ObjectClassification::WA_OBJECT_CLASSIFICATION_CAR},
+    {2, wauto_perception_msgs::msg::ObjectClassification::WA_OBJECT_CLASSIFICATION_TRAFFIC_LIGHT},
+    {3, wauto_perception_msgs::msg::ObjectClassification::WA_OBJECT_CLASSIFICATION_TRAFFIC_SIGN},
 };
 
 Yolov5VisionDetector::Yolov5VisionDetector(const rclcpp::NodeOptions& options)
@@ -49,23 +58,20 @@ Yolov5VisionDetector::Yolov5VisionDetector(const rclcpp::NodeOptions& options)
                                                             "raw", rmw_qos_profile_sensor_data);
 
     m_rois_publisher = this->create_publisher<wauto_perception_msgs::msg::RoiArray>("~/output/rois", 1);
-    m_debug_bb_publisher = image_transport::create_publisher(this, "~/output/debug/bb");
 }
 
 Yolov5VisionDetector::~Yolov5VisionDetector() {}
 
 void Yolov5VisionDetector::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr& msg) {
-    cv_bridge::CvImagePtr cv_ptr;
+    cv_bridge::CvImageConstPtr cv_ptr;
     try {
-        cv_ptr = cv_bridge::toCvCopy(msg, msg->encoding);
+        cv_ptr = cv_bridge::toCvShare(msg, msg->encoding);
     } catch (const std::exception& e) {
         RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
         return;
     }
 
-    cv::Mat image;
-    cv::cvtColor(cv_ptr->image, image, cv::COLOR_BayerRG2RGB);
-    cv::flip(image, image, -1);
+    const cv::Mat& image = cv_ptr->image;
     auto batch_result = detect(image);
     publish(batch_result, msg->header);
 }
@@ -74,38 +80,6 @@ BatchResult Yolov5VisionDetector::detect(const cv::Mat& img) {
     std::vector<BatchResult> batch_result(1);
 
     m_detector->detect(std::vector<cv::Mat>{img}, batch_result);
-
-    if (m_debug) {
-        static std::vector<cv::Scalar> colors = {
-            cv::Scalar(255, 56, 56),  cv::Scalar(255, 157, 151), cv::Scalar(255, 112, 31),  cv::Scalar(255, 178, 29),
-            cv::Scalar(207, 210, 49), cv::Scalar(72, 249, 10),   cv::Scalar(146, 204, 23),  cv::Scalar(61, 219, 134),
-            cv::Scalar(26, 147, 52),  cv::Scalar(0, 212, 187),   cv::Scalar(44, 153, 168),  cv::Scalar(0, 194, 255),
-            cv::Scalar(52, 69, 147),  cv::Scalar(100, 115, 255), cv::Scalar(0, 24, 236),    cv::Scalar(132, 56, 255),
-            cv::Scalar(82, 0, 133),   cv::Scalar(203, 56, 255),  cv::Scalar(255, 149, 200), cv::Scalar(255, 55, 199),
-        };
-
-        cv::Mat debug_img = img.clone();
-        for (auto& r : batch_result[0]) {
-            cv::rectangle(debug_img, r.rect, colors[r.id], 4);
-            std::stringstream stream;
-            stream << std::fixed << std::setprecision(2) << "id:" << r.id << "  score:" << r.prob;
-            cv::putText(debug_img, stream.str(), cv::Point(r.rect.x, r.rect.y - 5), 0, 1.5, cv::Scalar(255, 255, 255),
-                        2);
-        }
-
-        cv::namedWindow("image", cv::WINDOW_NORMAL);
-        cv::imshow("image", debug_img);
-        cv::resizeWindow("image", 1280, 960);
-        cv::waitKey(1);
-    }
-
-    /*
-        std_msgs::msg::Header header;
-        std::string encoding = "bgr8";
-        header.frame_id = "map";
-        auto cv_img = cv_bridge::CvImage(header, encoding, debug_img);
-        m_debug_bb_publisher.publish(*cv_img.toImageMsg());
-    */
 
     return batch_result[0];
 }
@@ -124,13 +98,13 @@ void Yolov5VisionDetector::publish(const BatchResult& batch_result, const std_ms
         roi.bottom_left = bl;
 
         geometry_msgs::msg::Point tr;
-        bl.y = result.rect.tl().y;
-        bl.x = result.rect.br().x;
+        tr.y = result.rect.tl().y;
+        tr.x = result.rect.br().x;
         roi.top_right = tr;
 
         wauto_perception_msgs::msg::ObjectClassification classification;
         classification.confidence = result.prob;
-        classification.classification = result.id;
+        classification.classification = class_id_map[result.id];
         roi.classification = classification;
 
         roi_array->rois.push_back(roi);
