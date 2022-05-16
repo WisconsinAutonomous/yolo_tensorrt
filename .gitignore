@@ -1,2 +1,3 @@
 *.weights
 *.engine
+COLCON_IGNORE
