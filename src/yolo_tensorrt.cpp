@@ -7,6 +7,7 @@
 #include <exception>
 #include <unordered_map>
 #include <algorithm>
+#include <assert.h>
 
 namespace vision_detector {
 
@@ -18,39 +19,93 @@ static std::unordered_map<std::string, ModelType> net_type_map = {
     {"YOLOV3", YOLOV3}, {"V3", YOLOV3}, {"YOLOV4", YOLOV4}, {"V4", YOLOV4}, {"YOLOV5", YOLOV5}, {"V5", YOLOV5},
 };
 
-static std::unordered_map<uint8_t, uint8_t> class_id_map = {
-    {0, wauto_perception_msgs::msg::ObjectClassification::WA_OBJECT_CLASSIFICATION_PEDESTRIAN},
-    {1, wauto_perception_msgs::msg::ObjectClassification::WA_OBJECT_CLASSIFICATION_CAR},
-    {2, wauto_perception_msgs::msg::ObjectClassification::WA_OBJECT_CLASSIFICATION_TRAFFIC_LIGHT},
-    {3, wauto_perception_msgs::msg::ObjectClassification::WA_OBJECT_CLASSIFICATION_TRAFFIC_SIGN},
+// HACK!!!!!
+// TRAINING NEEDS TO OUTPUT THE ID THAT CORRESPONDS TO THE CORRECT CLASSIFICATION
+static std::unordered_map<std::string, std::unordered_map<uint8_t, uint8_t>> class_id_map = {
+    {"yolov5m6",
+    {
+        {0, wauto_perception_msgs::msg::ObjectClassification::WA_OBJECT_CLASSIFICATION_PEDESTRIAN},
+        {1, wauto_perception_msgs::msg::ObjectClassification::WA_OBJECT_CLASSIFICATION_CAR},
+        {2, wauto_perception_msgs::msg::ObjectClassification::WA_OBJECT_CLASSIFICATION_TRAFFIC_LIGHT},
+        {3, wauto_perception_msgs::msg::ObjectClassification::WA_OBJECT_CLASSIFICATION_TRAFFIC_SIGN},
+        {4, wauto_perception_msgs::msg::ObjectClassification::WA_OBJECT_CLASSIFICATION_DEER},
+    }},
+    {"barrels",
+    {
+        {0, wauto_perception_msgs::msg::ObjectClassification::WA_OBJECT_CLASSIFICATION_BARREL},
+        {1, wauto_perception_msgs::msg::ObjectClassification::WA_OBJECT_CLASSIFICATION_BARRICADE},
+    }}
 };
 
 Yolov5VisionDetector::Yolov5VisionDetector(const rclcpp::NodeOptions& options)
-    : rclcpp::Node("yolov5_vision_detector", options), m_detector(std::make_unique<Detector>()) {
+    : rclcpp::Node("yolov5_vision_detector", options) {
     // Converts a param to uppercase and finds it's entry in the passed map
-    auto to_enum = [&](const std::string& name, const std::string& def,
+    auto to_enum = [&](std::string& str, const std::string& def,
                        std::unordered_map<std::string, auto> map) -> auto {
-        std::string str = this->declare_parameter<std::string>(name, def);
         std::transform(str.begin(), str.end(), str.begin(), ::toupper);
         if (map.count(str) == 0) {
-            RCLCPP_WARN(this->get_logger(), "%s is set to %s, which is not recognized. Setting to %s.", name.c_str(), str.c_str(), def.c_str());
+            RCLCPP_WARN(this->get_logger(), "Unrecognized parameter set to %s, which is not recognized. Setting to %s.", str.c_str(), def.c_str());
             return map[def];
         }
         return map[str];
     };
+    
+    // constants
+    const auto GPU_ID = 0;
 
-    m_config.file_model_cfg = this->declare_parameter<std::string>("file_model_cfg", "");
-    m_config.file_model_weights = this->declare_parameter<std::string>("file_model_weights", "");
-    m_config.detect_thresh = this->declare_parameter<float>("detect_thresh", 0.5);
-    m_config.inference_precision = to_enum("precision", "FLOAT", inference_precision_map);
-    m_config.gpu_id = 0;
-    m_config.net_type = to_enum("network", "V5", net_type_map);
-    m_config.calibration_image_list_file_txt =
-        this->declare_parameter<std::string>("calibration_image_list_file_txt", "");
+    // Declare as vectors so that we can have more than yolo_tensorrt inference
+    m_name = this->declare_parameter<std::string>("name");
 
-    m_debug = this->declare_parameter<bool>("debug", false);
+    auto config = this->declare_parameter<std::string>("config");
+    auto weights = this->declare_parameter<std::string>("weights");
+    auto threshold = this->declare_parameter<float>("threshold");
+    auto precision = this->declare_parameter<std::string>("precision");
+    auto network = this->declare_parameter<std::string>("network");
+    auto calibration_images = this->declare_parameter<std::string>("calibration_images");
 
-    m_detector->init(m_config);
+    auto detector = std::make_unique<Detector>();
+
+    Config dconfig;
+    dconfig.file_model_cfg = config;
+    dconfig.file_model_weights = weights;
+    dconfig.detect_thresh = threshold;
+    dconfig.gpu_id = GPU_ID;
+    dconfig.inference_precision = to_enum(precision, "HALF", inference_precision_map);
+    dconfig.net_type = to_enum(network, "V5", net_type_map);
+    dconfig.calibration_image_list_file_txt = calibration_images;
+
+    detector->init(dconfig);
+    m_detectors.push_back(std::move(detector));
+
+    /*
+    auto configs = this->declare_array_parameter<std::string>("configs");
+    auto weights = this->declare_array_parameter<std::string>("weights");
+    auto thresholds = this->declare_array_parameter<double>("thresholds");
+    auto precisions = this->declare_array_parameter<std::string>("precisions");
+    auto networks = this->declare_array_parameter<std::string>("networks");
+    auto calibration_images = this->declare_array_parameter<std::string>("calibration_images");
+
+    // All the lengths of the above parameters __must__ be the same!!
+    assert(configs.size() == weights.size() && configs.size() == thresholds.size() && configs.size() == precisions.size() && configs.size() == networks.size() && configs.size() == calibration_images.size());
+    assert(configs.size() > 0);
+
+    // Create a detector/config for each
+    for (std::size_t i = 0; i < configs.size(); i++) {
+        auto detector = std::make_unique<Detector>();
+
+        Config config;
+        config.file_model_cfg = configs[i];
+        config.file_model_weights = weights[i];
+        config.detect_thresh = thresholds[i];
+        config.gpu_id = GPU_ID;
+        config.inference_precision = to_enum(precisions[i], "HALF", inference_precision_map);
+        config.net_type = to_enum(networks[i], "V5", net_type_map);
+        config.calibration_image_list_file_txt = calibration_images[i];
+
+        detector->init(config);
+        m_detectors.push_back(std::move(detector));
+    }
+    */
 
     using std::placeholders::_1;
     m_img_subscriber = image_transport::create_subscription(this, "~/input/image",
@@ -58,8 +113,7 @@ Yolov5VisionDetector::Yolov5VisionDetector(const rclcpp::NodeOptions& options)
                                                             "raw", rmw_qos_profile_sensor_data);
 
     m_rois_publisher = this->create_publisher<wauto_perception_msgs::msg::RoiArray>("~/output/rois", 1);
-}
-
+} 
 Yolov5VisionDetector::~Yolov5VisionDetector() {}
 
 void Yolov5VisionDetector::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr& msg) {
@@ -72,16 +126,19 @@ void Yolov5VisionDetector::imageCallback(const sensor_msgs::msg::Image::ConstSha
     }
 
     const cv::Mat& image = cv_ptr->image;
-    auto batch_result = detect(image);
+    const std::vector<cv::Mat> image_array = {image};
+
+    // Accumulate results/detections from each detector
+    BatchResult batch_result;
+    for (auto& detector : m_detectors) {
+        std::vector<BatchResult> temp(1);
+        detector->detect(image_array, temp);
+
+        // concat the existing results and the new ones
+        batch_result.insert(batch_result.end(), temp[0].begin(), temp[0].end());
+    }
+
     publish(batch_result, msg->header);
-}
-
-BatchResult Yolov5VisionDetector::detect(const cv::Mat& img) {
-    std::vector<BatchResult> batch_result(1);
-
-    m_detector->detect(std::vector<cv::Mat>{img}, batch_result);
-
-    return batch_result[0];
 }
 
 void Yolov5VisionDetector::publish(const BatchResult& batch_result, const std_msgs::msg::Header& header) {
@@ -104,7 +161,7 @@ void Yolov5VisionDetector::publish(const BatchResult& batch_result, const std_ms
 
         wauto_perception_msgs::msg::ObjectClassification classification;
         classification.confidence = result.prob;
-        classification.classification = class_id_map[result.id];
+        classification.classification = class_id_map[m_name][result.id];
         roi.classification = classification;
 
         roi_array->rois.push_back(roi);

@@ -1,7 +1,7 @@
 #pragma once
 
 // ROS includes
-#include "rclcpp/rclcpp.hpp"
+#include "rclcpp/rclcpp.hpp" 
 #include "sensor_msgs/msg/image.hpp"
 #include "wauto_perception_msgs/msg/roi_array.hpp"
 
@@ -22,15 +22,17 @@ class Yolov5VisionDetector : public rclcpp::Node {
 
     void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr& msg);
 
-    BatchResult detect(const cv::Mat& img);
-
     void publish(const BatchResult& batch_result, const std_msgs::msg::Header& msg);
 
   private:
-    bool m_debug;
+    template <typename T>
+    std::vector<T> declare_array_parameter(const std::string& param, const std::vector<T>& default_ = std::vector<T>()) {
+        return this->declare_parameter<std::vector<T>>(param, default_);
+    }
 
-    std::unique_ptr<Detector> m_detector;
-    Config m_config;
+    std::string m_name;
+
+    std::vector<std::unique_ptr<Detector>> m_detectors;
 
     image_transport::Subscriber m_img_subscriber;
 
